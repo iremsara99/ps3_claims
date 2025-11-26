@@ -9,8 +9,13 @@ from sklearn.compose import ColumnTransformer
 from sklearn.metrics import auc
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, SplineTransformer, StandardScaler
+from sklearn.preprocessing import (
+    OneHotEncoder,
+    SplineTransformer,
+    StandardScaler,
+)
 from lightgbm import LGBMRegressor
+from IPython.display import display
 
 from ps3.data import _sample_split, load_transform
 from ps3.evaluation import _evaluate_predictions, evaluate_predict
@@ -28,13 +33,23 @@ y = df["PurePremium"]
 # The claim amount in itself is not informative - weighting it by exposure gives us the average claim amount per unit of exposure (e.g., claim amount per year)
 
 # TODO: use your create_sample_split function here
-df = _sample_split.create_sample_split(df, id_column="IDpol", training_frac=0.8)
+df = _sample_split.create_sample_split(
+    df, id_column="IDpol", training_frac=0.8
+)
 train = np.where(df["sample"] == "train")
 test = np.where(df["sample"] == "test")
 df_train = df.iloc[train].copy()
 df_test = df.iloc[test].copy()
 
-categoricals = ["VehBrand", "VehGas", "Region", "Area", "DrivAge", "VehAge", "VehPower"]
+categoricals = [
+    "VehBrand",
+    "VehGas",
+    "Region",
+    "Area",
+    "DrivAge",
+    "VehAge",
+    "VehPower",
+]
 
 predictors = categoricals + ["BonusMalus", "Density"]
 glm_categorizer = Categorizer(columns=categoricals)
@@ -42,10 +57,15 @@ glm_categorizer = Categorizer(columns=categoricals)
 X_train_t = glm_categorizer.fit_transform(df[predictors].iloc[train])
 X_test_t = glm_categorizer.transform(df[predictors].iloc[test])
 y_train_t, y_test_t = y.iloc[train], y.iloc[test]
-w_train_t, w_test_t = weight[train], weight[test] #weight diff obs differently (resembles weighted least squares)
+w_train_t, w_test_t = (
+    weight[train],
+    weight[test],
+)  # weight diff obs differently (resembles weighted least squares)
 
 TweedieDist = TweedieDistribution(1.5)
-t_glm1 = GeneralizedLinearRegressor(family=TweedieDist, l1_ratio=1, fit_intercept=True)
+t_glm1 = GeneralizedLinearRegressor(
+    family=TweedieDist, l1_ratio=1, fit_intercept=True
+)
 t_glm1.fit(X_train_t, y_train_t, sample_weight=w_train_t)
 
 
@@ -59,14 +79,18 @@ df_train["pp_t_glm1"] = t_glm1.predict(X_train_t)
 
 print(
     "training loss t_glm1:  {}".format(
-        TweedieDist.deviance(y_train_t, df_train["pp_t_glm1"], sample_weight=w_train_t)
+        TweedieDist.deviance(
+            y_train_t, df_train["pp_t_glm1"], sample_weight=w_train_t
+        )
         / np.sum(w_train_t)
     )
 )
 
 print(
     "testing loss t_glm1:  {}".format(
-        TweedieDist.deviance(y_test_t, df_test["pp_t_glm1"], sample_weight=w_test_t)
+        TweedieDist.deviance(
+            y_test_t, df_test["pp_t_glm1"], sample_weight=w_test_t
+        )
         / np.sum(w_test_t)
     )
 )
@@ -79,35 +103,40 @@ print(
 )
 # %%
 # TODO: Let's add splines for BonusMalus and Density and use a Pipeline.
-# Steps: 
-# 1. Define a Pipeline which chains a StandardScaler and SplineTransformer. 
-#    Choose knots="quantile" for the SplineTransformer and make sure, we 
-#    are only including one intercept in the final GLM. 
-# 2. Put the transforms together into a ColumnTransformer. Here we use OneHotEncoder for the categoricals.                                                                                           
+# Steps:
+# 1. Define a Pipeline which chains a StandardScaler and SplineTransformer.
+#    Choose knots="quantile" for the SplineTransformer and make sure, we
+#    are only including one intercept in the final GLM.
+# 2. Put the transforms together into a ColumnTransformer. Here we use OneHotEncoder for the categoricals.
 # 3. Chain the transforms together with the GLM in a Pipeline.
 
 # Let's put together a pipeline
 numeric_cols = ["BonusMalus", "Density"]
-numerical_steps = [('scaler', StandardScaler()), 
-                   ('spline', SplineTransformer(knots='quantile', include_bias=False))]
+numerical_steps = [
+    ("scaler", StandardScaler()),
+    ("spline", SplineTransformer(knots="quantile", include_bias=False)),
+]
 numeric_transformer = Pipeline(steps=numerical_steps)
 
 preprocessor = ColumnTransformer(
     transformers=[
         # TODO: Add numeric transforms here
         ("num", numeric_transformer, numeric_cols),
-        ("cat", OneHotEncoder(sparse_output=False, drop="first"), categoricals),
+        (
+            "cat",
+            OneHotEncoder(sparse_output=False, drop="first"),
+            categoricals,
+        ),
     ]
 )
 
-t_glm2 = GeneralizedLinearRegressor(family=TweedieDist, l1_ratio=1, fit_intercept=True)
+t_glm2 = GeneralizedLinearRegressor(
+    family=TweedieDist, l1_ratio=1, fit_intercept=True
+)
 
 preprocessor.set_output(transform="pandas")
 model_pipeline = Pipeline(
-    steps=[
-        ('preprocessor', preprocessor),
-        ('estimate', t_glm2)
-    ]
+    steps=[("preprocessor", preprocessor), ("estimate", t_glm2)]
 )
 
 # let's have a look at the pipeline
@@ -132,14 +161,18 @@ df_train["pp_t_glm2"] = model_pipeline.predict(df_train)
 
 print(
     "training loss t_glm2:  {}".format(
-        TweedieDist.deviance(y_train_t, df_train["pp_t_glm2"], sample_weight=w_train_t)
+        TweedieDist.deviance(
+            y_train_t, df_train["pp_t_glm2"], sample_weight=w_train_t
+        )
         / np.sum(w_train_t)
     )
 )
 
 print(
     "testing loss t_glm2:  {}".format(
-        TweedieDist.deviance(y_test_t, df_test["pp_t_glm2"], sample_weight=w_test_t)
+        TweedieDist.deviance(
+            y_test_t, df_test["pp_t_glm2"], sample_weight=w_test_t
+        )
         / np.sum(w_test_t)
     )
 )
@@ -157,20 +190,26 @@ print(
 # 1: Define the modelling pipeline. Tip: This can simply be a LGBMRegressor based on X_train_t from before.
 # 2. Make sure we are choosing the correct objective for our estimator.
 
-model_pipeline = LGBMRegressor(objective="tweedie", tweedie_variance_power=1.5, random_state=99)
+model_pipeline = LGBMRegressor(
+    objective="tweedie", tweedie_variance_power=1.5, random_state=99
+)
 model_pipeline.fit(X_train_t, y_train_t, sample_weight=w_train_t)
 df_test["pp_t_lgbm"] = model_pipeline.predict(X_test_t)
 df_train["pp_t_lgbm"] = model_pipeline.predict(X_train_t)
 print(
     "training loss t_lgbm:  {}".format(
-        TweedieDist.deviance(y_train_t, df_train["pp_t_lgbm"], sample_weight=w_train_t)
+        TweedieDist.deviance(
+            y_train_t, df_train["pp_t_lgbm"], sample_weight=w_train_t
+        )
         / np.sum(w_train_t)
     )
 )
 
 print(
     "testing loss t_lgbm:  {}".format(
-        TweedieDist.deviance(y_test_t, df_test["pp_t_lgbm"], sample_weight=w_test_t)
+        TweedieDist.deviance(
+            y_test_t, df_test["pp_t_lgbm"], sample_weight=w_test_t
+        )
         / np.sum(w_test_t)
     )
 )
@@ -179,22 +218,18 @@ print(
 # TODO: Let's tune the LGBM to reduce overfitting.
 # Steps:
 # 1. Define a `GridSearchCV` object with our lgbm pipeline/estimator. Tip: Parameters for a specific step of the pipeline
-# can be passed by <step_name>__param. 
+# can be passed by <step_name>__param.
 
 # Note: Typically we tune many more parameters and larger grids,
 # but to save compute time here, we focus on getting the learning rate
 # and the number of estimators somewhat aligned -> tune learning_rate and n_estimators
-lgb = LGBMRegressor(objective='tweedie')
+lgb = LGBMRegressor(objective="tweedie")
 parameter_grid = {
-    "n_estimators" : [100,200,300],
-    "learning_rate" : [0.01, 0.02, 0.05, 0.1, 0.2]
+    "n_estimators": [100, 200, 300],
+    "learning_rate": [0.01, 0.02, 0.05, 0.1, 0.2],
 }
 
-cv = GridSearchCV(
-    lgb,
-    parameter_grid,
-    cv=5
-)
+cv = GridSearchCV(lgb, parameter_grid, cv=5)
 cv.fit(X_train_t, y_train_t, sample_weight=w_train_t)
 
 df_test["pp_t_lgbm"] = cv.best_estimator_.predict(X_test_t)
@@ -202,14 +237,18 @@ df_train["pp_t_lgbm"] = cv.best_estimator_.predict(X_train_t)
 
 print(
     "training loss t_lgbm:  {}".format(
-        TweedieDist.deviance(y_train_t, df_train["pp_t_lgbm"], sample_weight=w_train_t)
+        TweedieDist.deviance(
+            y_train_t, df_train["pp_t_lgbm"], sample_weight=w_train_t
+        )
         / np.sum(w_train_t)
     )
 )
 
 print(
     "testing loss t_lgbm:  {}".format(
-        TweedieDist.deviance(y_test_t, df_test["pp_t_lgbm"], sample_weight=w_test_t)
+        TweedieDist.deviance(
+            y_test_t, df_test["pp_t_lgbm"], sample_weight=w_test_t
+        )
         / np.sum(w_test_t)
     )
 )
@@ -273,15 +312,22 @@ plt.plot()
 
 # %%
 # PS4 start
-ax=df.groupby('BonusMalus')['ClaimNb'].mean().plot(kind='bar')
-plt.xlabel('BonusMalus')
+ax = df.groupby("BonusMalus")["ClaimNb"].mean().plot(kind="bar")
+plt.xlabel("BonusMalus")
 for i, label in enumerate(ax.get_xticklabels()):
     if i % 10 != 0:
         label.set_visible(False)
-plt.ylabel('Average Claims')
+plt.ylabel("Average Claims")
 
 # %%
-constrained_lgbm = LGBMRegressor(objective="tweedie", tweedie_variance_power=1.5, random_state=99, monotone_constraints=[1 if col == 'BonusMalus' else 0 for col in X_train_t.columns])
+constrained_lgbm = LGBMRegressor(
+    objective="tweedie",
+    tweedie_variance_power=1.5,
+    random_state=99,
+    monotone_constraints=[
+        1 if col == "BonusMalus" else 0 for col in X_train_t.columns
+    ],
+)
 constrained_lgbm.fit(X_train_t, y_train_t, sample_weight=w_train_t)
 df_test["pp_t_lgbm_constrained"] = constrained_lgbm.predict(X_test_t)
 df_train["pp_t_lgbm_constrained"] = constrained_lgbm.predict(X_train_t)
@@ -290,24 +336,48 @@ df_train["pp_t_lgbm_constrained"] = constrained_lgbm.predict(X_train_t)
 # (both in the training and test samples) compared to the unconstrained model built in the previous exercise.
 
 # Running performance metrics for constrained and unconstrained LGBM models
-# unconstrained training data 
+# unconstrained training data
 # Tuned light GBM
-print("Model evaluation metrics for Unconstrained and tuned LBGM model, training and test data")
-unconstrained_train = _evaluate_predictions.evaluate_predict(df_train["pp_t_lgbm"], df_train['PurePremium'], df_train['Exposure'], 
-                                                             Tweedie_power= 1.5, model_type ='Train - Unconstrained Tuned LGBM')
+print(
+    "Model evaluation metrics for Unconstrained and tuned LBGM model, training and test data"
+)
+unconstrained_train = _evaluate_predictions.evaluate_predict(
+    df_train["pp_t_lgbm"],
+    df_train["PurePremium"],
+    df_train["Exposure"],
+    Tweedie_power=1.5,
+    model_type="Train - Unconstrained Tuned LGBM",
+)
 display(unconstrained_train)
 # %%
-unconstrained_test = _evaluate_predictions.evaluate_predict(df_test["pp_t_lgbm"], df_test['PurePremium'], df_test['Exposure'], 
-                                                            Tweedie_power= 1.5, model_type ='Test - Unconstrained Tuned LGBM')
+unconstrained_test = _evaluate_predictions.evaluate_predict(
+    df_test["pp_t_lgbm"],
+    df_test["PurePremium"],
+    df_test["Exposure"],
+    Tweedie_power=1.5,
+    model_type="Test - Unconstrained Tuned LGBM",
+)
 display(unconstrained_test)
 
-print("="*100)
+print("=" * 100)
 
-print("Model evaluation metrics for Constrained LBGM model, training and test data")
-constrained_train = _evaluate_predictions.evaluate_predict(df_train["pp_t_lgbm_constrained"], df_train['PurePremium'], df_train['Exposure'], 
-                                                             Tweedie_power= 1.5, model_type ='Train - Constrained Tuned LGBM')
+print(
+    "Model evaluation metrics for Constrained LBGM model, training and test data"
+)
+constrained_train = _evaluate_predictions.evaluate_predict(
+    df_train["pp_t_lgbm_constrained"],
+    df_train["PurePremium"],
+    df_train["Exposure"],
+    Tweedie_power=1.5,
+    model_type="Train - Constrained Tuned LGBM",
+)
 display(constrained_train)
 # %%
-constrained_test = _evaluate_predictions.evaluate_predict(df_test["pp_t_lgbm_constrained"], df_test['PurePremium'], df_test['Exposure'], 
-                                                            Tweedie_power= 1.5, model_type ='Test - Constrained Tuned LGBM')
+constrained_test = _evaluate_predictions.evaluate_predict(
+    df_test["pp_t_lgbm_constrained"],
+    df_test["PurePremium"],
+    df_test["Exposure"],
+    Tweedie_power=1.5,
+    model_type="Test - Constrained Tuned LGBM",
+)
 display(constrained_test)

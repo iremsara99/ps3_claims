@@ -13,6 +13,7 @@ from sklearn.preprocessing import OneHotEncoder, SplineTransformer, StandardScal
 from lightgbm import LGBMRegressor
 
 from ps3.data import _sample_split, load_transform
+from ps3.evaluation import _evaluate_predictions, evaluate_predict
 
 # %%
 # load data
@@ -82,7 +83,7 @@ print(
 # 1. Define a Pipeline which chains a StandardScaler and SplineTransformer. 
 #    Choose knots="quantile" for the SplineTransformer and make sure, we 
 #    are only including one intercept in the final GLM. 
-# 2. Put the transforms together into a ColumnTransformer. Here we use OneHotEncoder for the categoricals.
+# 2. Put the transforms together into a ColumnTransformer. Here we use OneHotEncoder for the categoricals.                                                                                           
 # 3. Chain the transforms together with the GLM in a Pipeline.
 
 # Let's put together a pipeline
@@ -284,3 +285,29 @@ constrained_lgbm = LGBMRegressor(objective="tweedie", tweedie_variance_power=1.5
 constrained_lgbm.fit(X_train_t, y_train_t, sample_weight=w_train_t)
 df_test["pp_t_lgbm_constrained"] = constrained_lgbm.predict(X_test_t)
 df_train["pp_t_lgbm_constrained"] = constrained_lgbm.predict(X_train_t)
+
+# Based on the model evaluation metrics, we observe that the constrained LGBM provides a slightly better fit to the data
+# (both in the training and test samples) compared to the unconstrained model built in the previous exercise.
+
+# Running performance metrics for constrained and unconstrained LGBM models
+# unconstrained training data 
+# Tuned light GBM
+print("Model evaluation metrics for Unconstrained and tuned LBGM model, training and test data")
+unconstrained_train = _evaluate_predictions.evaluate_predict(df_train["pp_t_lgbm"], df_train['PurePremium'], df_train['Exposure'], 
+                                                             Tweedie_power= 1.5, model_type ='Train - Unconstrained Tuned LGBM')
+display(unconstrained_train)
+# %%
+unconstrained_test = _evaluate_predictions.evaluate_predict(df_test["pp_t_lgbm"], df_test['PurePremium'], df_test['Exposure'], 
+                                                            Tweedie_power= 1.5, model_type ='Test - Unconstrained Tuned LGBM')
+display(unconstrained_test)
+
+print("="*100)
+
+print("Model evaluation metrics for Constrained LBGM model, training and test data")
+constrained_train = _evaluate_predictions.evaluate_predict(df_train["pp_t_lgbm_constrained"], df_train['PurePremium'], df_train['Exposure'], 
+                                                             Tweedie_power= 1.5, model_type ='Train - Constrained Tuned LGBM')
+display(constrained_train)
+# %%
+constrained_test = _evaluate_predictions.evaluate_predict(df_test["pp_t_lgbm_constrained"], df_test['PurePremium'], df_test['Exposure'], 
+                                                            Tweedie_power= 1.5, model_type ='Test - Constrained Tuned LGBM')
+display(constrained_test)
